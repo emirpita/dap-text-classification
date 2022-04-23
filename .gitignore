@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# YELP dataset info
+**/yelp-dataset/
+
+# Local constant configuration
+**/constant.py
