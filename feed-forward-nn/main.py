@@ -91,6 +91,22 @@ VOCAB_SIZE = len(review_dict)
 NUM_LABELS = 3
 
 
+# Function to make bow vector to be used as input to network
+def make_bow_vector(review_dict, sentence):
+    vec = torch.zeros(VOCAB_SIZE, dtype=torch.float64, device=device)
+    for word in sentence:
+        vec[review_dict.token2id[word]] += 1
+    return vec.view(1, -1).float()
+
+
+# Function to get the output tensor
+def make_target(label):
+    if label == -1:
+        return torch.tensor([0], dtype=torch.long, device=device)
+    elif label == 0:
+        return torch.tensor([1], dtype=torch.long, device=device)
+    else:
+        return torch.tensor([2], dtype=torch.long, device=device)
 
 VOCAB_SIZE = len(review_dict)
 
@@ -147,24 +163,6 @@ for epoch in range(num_epochs):
     train_loss = 0
 
 f.close()
-
-
-# Function to make bow vector to be used as input to network
-def make_bow_vector(review_dict, sentence):
-    vec = torch.zeros(VOCAB_SIZE, dtype=torch.float64, device=device)
-    for word in sentence:
-        vec[review_dict.token2id[word]] += 1
-    return vec.view(1, -1).float()
-
-
-# Function to get the output tensor
-def make_target(label):
-    if label == -1:
-        return torch.tensor([0], dtype=torch.long, device=device)
-    elif label == 0:
-        return torch.tensor([1], dtype=torch.long, device=device)
-    else:
-        return torch.tensor([2], dtype=torch.long, device=device)
 
 
 bow_ff_nn_predictions = []
