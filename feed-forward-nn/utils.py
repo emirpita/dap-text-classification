@@ -60,6 +60,7 @@ def load_yelp_orig_data():
 
     data_df.head(100000).to_csv(constant.OUTPUT_FOLDER + '/output_reviews_top.csv')
 
+
 # Function to map stars to sentiment
 def map_sentiment(stars_received):
     if stars_received <= 2:
@@ -68,6 +69,7 @@ def map_sentiment(stars_received):
         return 0
     else:
         return 1
+
 
 # Train Test Split Function
 def split_train_test(top_data_df_small, test_size=0.3, shuffle_state=True):
@@ -92,6 +94,7 @@ def split_train_test(top_data_df_small, test_size=0.3, shuffle_state=True):
     Y_test = Y_test.reset_index()
     print(X_train.head())
     return X_train, X_test, Y_train, Y_test
+
 
 # Function to return the dictionary either with padding word or without padding
 def make_dict(top_data_df_small, padding=True):
