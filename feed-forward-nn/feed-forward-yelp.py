@@ -21,9 +21,9 @@ def load_yelp_orig_data():
     data_df.head(100000).to_csv(constant.OUTPUT_FOLDER + '/output_reviews_top.csv')
 
 
-load_yelp_orig_data()
+#load_yelp_orig_data()
 
-top_data_df = pd.read_csv(constant.INPUT_FOLDER + 'output_reviews_top.csv')
+top_data_df = pd.read_csv(constant.OUTPUT_FOLDER + '/output_reviews_top.csv')
 print("Columns in the original dataset:\n")
 print(top_data_df.columns)
 
