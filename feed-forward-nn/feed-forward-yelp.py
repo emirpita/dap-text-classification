@@ -1,33 +1,22 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch.nn as nn
-import torch.nn.functional as funct
+import torch.nn.functional as F
 import torch.optim as optim
-
 import torch
 
 import constant
+import utils
+import os; os.system('')
+
+from gensim.parsing.preprocessing import remove_stopwords
+from gensim.utils import simple_preprocess
+from gensim.parsing.porter import PorterStemmer
+
+from sklearn.metrics import classification_report
 
 
-def load_yelp_orig_data():
-    path_to_yelp_reviews = constant.INPUT_FOLDER + '/yelp_academic_dataset_review.json'
-
-    # read the entire file into a python array
-    with open(path_to_yelp_reviews, 'r', encoding='utf-8', errors='replace') as f:
-        data = f.readlines()
-
-    # remove the trailing "\n" from each line
-    data = map(lambda x: x.rstrip(), data)
-
-    data_json_str = "[" + ','.join(data) + "]"
-
-    # now, load it into pandas
-    data_df = pd.read_json(data_json_str)
-
-    data_df.head(100000).to_csv(constant.OUTPUT_FOLDER + '/output_reviews_top.csv')
-
-
-# load_yelp_orig_data()
+utils.load_yelp_orig_data()
 
 top_data_df = pd.read_csv(constant.OUTPUT_FOLDER + '/output_reviews_top.csv')
 print("Columns in the original dataset:\n")
@@ -37,18 +26,8 @@ print("Number of rows per star rating:")
 print(top_data_df['stars'].value_counts())
 
 
-# Function to map stars to sentiment
-def map_sentiment(stars_received):
-    if stars_received <= 2:
-        return -1
-    elif stars_received == 3:
-        return 0
-    else:
-        return 1
-
-
 # Mapping stars to sentiment into three categories
-top_data_df['sentiment'] = [map_sentiment(x) for x in top_data_df['stars']]
+top_data_df['sentiment'] = [utils.map_sentiment(x) for x in top_data_df['stars']]
 # Plotting the sentiment distribution
 plt.figure()
 pd.value_counts(top_data_df['sentiment']).plot.bar(title="Sentiment distribution in df")
@@ -77,21 +56,16 @@ top_data_df_small.head(10)
 # Pre processing
 
 # Removing the stop words
-from gensim.parsing.preprocessing import remove_stopwords
 
 print(remove_stopwords("Restaurant had a really good service!!"))
 print(remove_stopwords("I did not like the food!!"))
 print(remove_stopwords("This product is not good!!"))
 
 
-from gensim.utils import simple_preprocess
-
 # Tokenize the text column to get the new column 'tokenized_text'
 top_data_df_small['tokenized_text'] = [simple_preprocess(line, deacc=True) for line in top_data_df_small['text']]
 print(top_data_df_small['tokenized_text'].head(10))
 
-
-from gensim.parsing.porter import PorterStemmer
 
 porter_stemmer = PorterStemmer()
 
@@ -101,39 +75,112 @@ top_data_df_small['stemmed_tokens'] = [[porter_stemmer.stem(word) for word in to
 top_data_df_small['stemmed_tokens'].head(10)
 
 
-from sklearn.model_selection import train_test_split
-
-
-# Train Test Split Function
-def split_train_test(top_data_df_small, test_size=0.3, shuffle_state=True):
-    X_train, X_test, Y_train, Y_test = train_test_split(top_data_df_small[
-                                                            ['business_id', 'cool', 'date', 'funny', 'review_id',
-                                                             'stars', 'text', 'useful', 'user_id', 'stemmed_tokens']],
-                                                        top_data_df_small['sentiment'],
-                                                        shuffle=shuffle_state,
-                                                        test_size=test_size,
-                                                        random_state=15)
-    print("Value counts for Train sentiments")
-    print(Y_train.value_counts())
-    print("Value counts for Test sentiments")
-    print(Y_test.value_counts())
-    print(type(X_train))
-    print(type(Y_train))
-    X_train = X_train.reset_index()
-    X_test = X_test.reset_index()
-    Y_train = Y_train.to_frame()
-    Y_train = Y_train.reset_index()
-    Y_test = Y_test.to_frame()
-    Y_test = Y_test.reset_index()
-    print(X_train.head())
-    return X_train, X_test, Y_train, Y_test
-
-
 # Call the train_test_split
-X_train, X_test, Y_train, Y_test = split_train_test(top_data_df_small)
+X_train, X_test, Y_train, Y_test = utils.split_train_test(top_data_df_small)
 
 
 # Use cuda if present
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device available for running: ")
 print(device)
+
+
+# Make the dictionary without padding for the basic models
+review_dict = utils.make_dict(top_data_df_small, padding=False)
+
+VOCAB_SIZE = len(review_dict)
+NUM_LABELS = 3
+
+
+
+VOCAB_SIZE = len(review_dict)
+
+input_dim = VOCAB_SIZE
+hidden_dim = 500
+output_dim = 3
+num_epochs = 100
+
+ff_nn_bow_model = utils.FeedforwardNeuralNetModel(input_dim, hidden_dim, output_dim)
+ff_nn_bow_model.to(device)
+
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.SGD(ff_nn_bow_model.parameters(), lr=0.001)
+
+# Open the file for writing loss
+ffnn_loss_file_name = constant.OUTPUT_FOLDER + 'ffnn_bow_class_big_loss_500_epoch_100_less_lr.csv'
+f = open(ffnn_loss_file_name, 'w')
+f.write('iter, loss')
+f.write('\n')
+losses = []
+iter = 0
+
+
+# Start training
+for epoch in range(num_epochs):
+    if (epoch + 1) % 25 == 0:
+        print("Epoch completed: " + str(epoch + 1))
+    train_loss = 0
+    for index, row in X_train.iterrows():
+        # Clearing the accumulated gradients
+        optimizer.zero_grad()
+
+        # Make the bag of words vector for stemmed tokens
+        bow_vec = utils.make_bow_vector(review_dict, row['stemmed_tokens'])
+
+        # Forward pass to get output
+        probs = ff_nn_bow_model(bow_vec)
+
+        # Get the target label
+        target = utils.make_target(Y_train['sentiment'][index])
+
+        # Calculate Loss: softmax --> cross entropy loss
+        loss = loss_function(probs, target)
+        # Accumulating the loss over time
+        train_loss += loss.item()
+
+        # Getting gradients w.r.t. parameters
+        loss.backward()
+
+        # Updating parameters
+        optimizer.step()
+    f.write(str((epoch + 1)) + "," + str(train_loss / len(X_train)))
+    f.write('\n')
+    train_loss = 0
+
+f.close()
+
+
+# Function to make bow vector to be used as input to network
+def make_bow_vector(review_dict, sentence):
+    vec = torch.zeros(VOCAB_SIZE, dtype=torch.float64, device=device)
+    for word in sentence:
+        vec[review_dict.token2id[word]] += 1
+    return vec.view(1, -1).float()
+
+
+# Function to get the output tensor
+def make_target(label):
+    if label == -1:
+        return torch.tensor([0], dtype=torch.long, device=device)
+    elif label == 0:
+        return torch.tensor([1], dtype=torch.long, device=device)
+    else:
+        return torch.tensor([2], dtype=torch.long, device=device)
+
+
+bow_ff_nn_predictions = []
+original_lables_ff_bow = []
+
+with torch.no_grad():
+    for index, row in X_test.iterrows():
+        bow_vec = utils.make_bow_vector(review_dict, row['stemmed_tokens'])
+        probs = ff_nn_bow_model(bow_vec)
+        bow_ff_nn_predictions.append(torch.argmax(probs, dim=1).cpu().numpy()[0])
+        original_lables_ff_bow.append(make_target(Y_test['sentiment'][index]).cpu().numpy()[0])
+print(classification_report(original_lables_ff_bow,bow_ff_nn_predictions))
+ffnn_loss_df = pd.read_csv(ffnn_loss_file_name)
+print(len(ffnn_loss_df))
+print(ffnn_loss_df.columns)
+ffnn_plt_500_padding_100_epochs = ffnn_loss_df[' loss'].plot()
+fig = ffnn_plt_500_padding_100_epochs.get_figure()
+fig.savefig(constant.OUTPUT_FOLDER + 'plots/' + "ffnn_bow_loss_500_padding_100_epochs_less_lr.pdf")
