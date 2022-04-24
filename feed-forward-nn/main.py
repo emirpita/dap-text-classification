@@ -122,7 +122,7 @@ loss_function = nn.CrossEntropyLoss()
 optimizer = optim.SGD(ff_nn_bow_model.parameters(), lr=0.001)
 
 # Open the file for writing loss
-ffnn_loss_file_name = constant.OUTPUT_FOLDER + 'ffnn_bow_class_big_loss_500_epoch_100_less_lr.csv'
+ffnn_loss_file_name = constant.OUTPUT_FOLDER + 'ffnn_bow_epoch_100_less_lr.csv'
 f = open(ffnn_loss_file_name, 'w')
 f.write('iter, loss')
 f.write('\n')
